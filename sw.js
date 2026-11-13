@@ -1,6 +1,6 @@
 // Offline support: serve from cache immediately, refresh the cache in the background.
 // Bump CACHE when the file list changes.
-const CACHE = 'll-v6';
+const CACHE = 'll-v7';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './icon.svg', './css/app.css',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png',

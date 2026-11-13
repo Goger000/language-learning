@@ -53,8 +53,9 @@ function dueCards(now) {
 function newCandidates(limit) {
   const out = [];
   if (limit <= 0) return out;
+  const disabled = new Set(state.settings.disabledCats);
   for (const note of allNotes) {
-    if (note.deck !== 'phrases') continue;
+    if (note.deck !== 'phrases' || disabled.has(note.category)) continue;
     for (let i = 0; i < note.dirs.length; i++) {
       const id = cardId(note, note.dirs[i]);
       if (state.cards[id]) continue;
@@ -146,6 +147,16 @@ function voiceWarning() {
   return `<div class="warn">找不到韓文語音。Android：設定 → 文字轉語音 → 安裝韓文語音資料；iPhone：設定 → 輔助使用 → 朗讀內容 → 聲音 → 韓文。</div>`;
 }
 
+const dayKey = daysAgo => today(Date.now() - daysAgo * DAY);
+const dayTotal = key => (state.daily[key]?.reviews || 0) + (state.daily[key]?.drill || 0);
+
+// Consecutive days with any practice; today not counting yet doesn't break the streak.
+function streak() {
+  let n = 0;
+  for (let i = dayTotal(dayKey(0)) ? 0 : 1; dayTotal(dayKey(i)) > 0; i++) n++;
+  return n;
+}
+
 function home() {
   const now = Date.now();
   const due = dueCards(now).length;
@@ -155,7 +166,8 @@ function home() {
   const hint = done < pack.lessons.length
     ? `<p class="muted small">建議先完成字母課程，再把重心放在會話卡。會話卡可以同時開始。</p>` : '';
   app.innerHTML = `
-    <header class="title"><h1>한국어</h1><p class="muted">${esc(countdown())}</p></header>
+    <header class="title"><h1>한국어</h1>
+      <p class="muted">${[streak() ? `🔥 連續 ${streak()} 天` : '', countdown()].filter(Boolean).map(esc).join('　')}</p></header>
     ${voiceWarning()}
     <section class="panel">
       <div class="stats">
@@ -170,6 +182,7 @@ function home() {
       <a class="btn" href="#/drill">辨音訓練 <span class="muted">今日 ${stats.drill || 0} 題</span></a>
       <a class="btn" href="#/custom">${CUSTOM.name} <span class="muted">${Object.keys(state.custom).length}</span></a>
       <a class="btn" href="#/browse">會話本</a>
+      <a class="btn" href="#/stats">學習統計</a>
       <a class="btn" href="#/settings">設定</a>
     </nav>
     ${hint}`;
@@ -178,10 +191,25 @@ function home() {
 }
 
 function reviewView() {
-  const session = { count: 0, last: null };
+  const session = { count: 0, last: null, history: [], forced: null };
+
+  function undo() {
+    const h = session.history.pop();
+    if (!h) return;
+    if (h.prev) state.cards[h.id] = h.prev;
+    else delete state.cards[h.id];
+    const stats = todayStats();
+    if (!h.prev) stats.new -= 1;
+    stats.reviews -= 1;
+    save();
+    session.count -= 1;
+    session.forced = h.id;
+    next();
+  }
 
   function next() {
-    const id = pickNext(session);
+    const id = session.forced || pickNext(session);
+    session.forced = null;
     if (!id) return finished();
     const [nid, dir] = parseId(id);
     const note = noteById.get(nid);
@@ -193,7 +221,8 @@ function reviewView() {
       const now = Date.now();
       const left = dueCards(now).length + newCandidates(newLeftToday()).length;
       app.innerHTML = `
-        <header class="bar"><a href="#/" class="nav-back">‹</a><h2>練習</h2><span class="muted">剩 ${left}</span></header>
+        <header class="bar"><a href="#/" class="nav-back">‹</a><h2>練習 <span class="muted small">剩 ${left}</span></h2>
+          <span>${session.history.length ? '<button class="link" id="undo">↶ 復原</button>' : ''}</span></header>
         <section class="card">
           ${card ? '' : '<span class="tag">新卡</span>'}
           <div class="front">${tpl.front(note)}</div>
@@ -213,10 +242,12 @@ function reviewView() {
       } else {
         app.querySelectorAll('[data-rate]').forEach(b => b.onclick = () => rate(Number(b.dataset.rate)));
       }
+      app.querySelector('#undo')?.addEventListener('click', undo);
     }
 
     function rate(g) {
       const now = Date.now();
+      session.history.push({ id, prev: card });
       state.cards[id] = schedule(card || newCard(), g, now, state.settings.retention);
       const stats = todayStats();
       if (!card) stats.new += 1;
@@ -248,7 +279,9 @@ function reviewView() {
         <p>今天的練習完成了！共練習 ${todayStats().reviews} 次。</p>
         ${more}
         <a class="btn primary" href="#/">回首頁</a>
+        ${session.history.length ? '<button class="btn" id="undo">↶ 復原上一張</button>' : ''}
       </section>`;
+    app.querySelector('#undo')?.addEventListener('click', undo);
   }
 
   next();
@@ -471,6 +504,59 @@ function browseView() {
   render('');
 }
 
+function statsView() {
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const key = dayKey(13 - i);
+    return { key, label: key.slice(5).replace('-', '/'), value: dayTotal(key) };
+  });
+  const max = Math.max(1, ...days.map(d => d.value));
+  const peak = days.reduce((a, b) => (b.value > a.value ? b : a));
+  const learned = Object.values(state.cards).filter(c => c.state === 'review').length;
+  const total = Object.values(state.daily).reduce((sum, d) => sum + (d.reviews || 0) + (d.drill || 0), 0);
+
+  const progress = (name, notes) => {
+    const ids = notes.flatMap(n => n.dirs.map(d => cardId(n, d)));
+    if (!ids.length) return '';
+    const done = ids.filter(id => state.cards[id]?.state === 'review').length;
+    const started = ids.filter(id => state.cards[id]).length;
+    return `<li><div class="meter-label"><span>${esc(name)}</span><span class="muted">${done} / ${ids.length}</span></div>
+      <div class="meter" role="img" aria-label="${esc(name)} 已學 ${done}，學習中 ${started - done}，共 ${ids.length}">
+        <div class="meter-done" style="width:${done / ids.length * 100}%"></div>
+        <div class="meter-started" style="width:${(started - done) / ids.length * 100}%"></div></div></li>`;
+  };
+  const phraseCats = [CUSTOM, ...pack.categories];
+
+  app.innerHTML = `${bar('學習統計')}
+    <section class="panel">
+      <div class="stats">
+        <div><b>${streak()}</b><span>連續天數</span></div>
+        <div><b>${learned}</b><span>已學卡片</span></div>
+        <div><b>${total}</b><span>總練習次數</span></div>
+      </div>
+    </section>
+    <section class="panel">
+      <h3>近 14 天練習量</h3>
+      <p class="muted small" id="barInfo">卡片複習＋辨音題數。點長條看數字。</p>
+      <div class="bars" role="img" aria-label="近 14 天練習量">${days.map((d, i) => `
+        <button class="bar-col" data-info="${d.label}：${d.value} 次" aria-label="${d.label} ${d.value} 次">
+          <span class="bar-val">${d.value && (d === peak || i === 13) ? d.value : ''}</span>
+          <span class="bar-fill" style="height:${d.value / max * 100}%"></span>
+        </button>`).join('')}</div>
+      <div class="bar-axis"><span>${days[0].label}</span><span>今天</span></div>
+    </section>
+    <section class="panel">
+      <h3>各分類進度</h3>
+      <p class="muted small"><span class="key key-done"></span>已學會　<span class="key key-started"></span>學習中</p>
+      <ul class="meters">
+        ${progress('한글 字母課程', allNotes.filter(n => n.deck === 'hangul'))}
+        ${phraseCats.map(c => progress(c.name, allNotes.filter(n => n.deck === 'phrases' && n.category === c.id))).join('')}
+      </ul>
+    </section>`;
+  app.querySelectorAll('.bar-col').forEach(b => b.onclick = () => {
+    app.querySelector('#barInfo').textContent = b.dataset.info;
+  });
+}
+
 function settingsView() {
   const s = state.settings;
   app.innerHTML = `${bar('設定')}
@@ -485,6 +571,12 @@ function settingsView() {
       <button class="btn" data-say="안녕하세요. 만나서 반갑습니다.">🔊 測試語音</button>
     </section>
     <section class="panel form">
+      <h3>要學的分類</h3>
+      <p class="muted small">取消勾選的分類不會再出新卡；已經開始學的卡片仍會照常複習。</p>
+      ${[CUSTOM, ...pack.categories].map(c => `<label class="check"><input type="checkbox" data-cat="${c.id}"
+        ${s.disabledCats.includes(c.id) ? '' : 'checked'}>${esc(c.name)}</label>`).join('')}
+    </section>
+    <section class="panel form">
       <button class="btn" id="export">匯出備份</button>
       <label class="btn center">匯入備份<input type="file" id="import" accept="application/json,.json" hidden></label>
       <button class="btn danger" id="reset">清除所有進度</button>
@@ -495,6 +587,10 @@ function settingsView() {
   $('ttsRate').oninput = e => { s.ttsRate = Number(e.target.value); $('rateVal').textContent = s.ttsRate; save(); };
   $('showRoman').onchange = e => { s.showRoman = e.target.checked; save(); };
   $('tripDate').onchange = e => { s.tripDate = e.target.value; save(); };
+  app.querySelectorAll('[data-cat]').forEach(b => b.onchange = () => {
+    s.disabledCats = [...app.querySelectorAll('[data-cat]:not(:checked)')].map(x => x.dataset.cat);
+    save();
+  });
   $('export').onclick = () => {
     const url = URL.createObjectURL(new Blob([exportData()], { type: 'application/json' }));
     const a = Object.assign(document.createElement('a'), { href: url, download: `language-learning-${today()}.json` });
@@ -517,7 +613,7 @@ function settingsView() {
 
 // ---------- router ----------
 
-const routes = { '': home, review: reviewView, hangul: hangulView, lesson: lessonView, browse: browseView, settings: settingsView, custom: customView, edit: editView,
+const routes = { '': home, review: reviewView, hangul: hangulView, lesson: lessonView, browse: browseView, settings: settingsView, custom: customView, edit: editView, stats: statsView,
   drill: arg => (arg ? drillView(pack, arg) : drillListView(pack)) };
 
 function route() {

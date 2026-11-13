@@ -4,7 +4,7 @@ const KEY = 'll.v1';
 const DAY_CUTOFF_HOURS = 4; // studying at 1am still counts as "yesterday"
 
 const DEFAULTS = {
-  settings: { newPerDay: 20, retention: 0.9, ttsRate: 0.9, showRoman: true, tripDate: '' },
+  settings: { newPerDay: 20, retention: 0.9, ttsRate: 0.9, showRoman: true, tripDate: '', disabledCats: [] },
   cards: {},   // cardId -> FSRS card state
   lessons: {}, // lessonId -> { done: 'YYYY-MM-DD' }
   daily: {},   // 'YYYY-MM-DD' -> { new, reviews }
