@@ -4,7 +4,19 @@ import { speak, hasVoice } from './tts.js';
 import { packs } from '../lang/index.js';
 
 const pack = packs.ko;
-const noteById = new Map(pack.notes.map(n => [n.id, n]));
+const CUSTOM = { id: 'custom', name: '我的卡片' };
+
+// Custom cards come first so words picked up at work are learned before the built-in deck.
+let allNotes = [];
+let noteById = new Map();
+function refreshNotes() {
+  const custom = Object.values(state.custom)
+    .sort((a, b) => a.created - b.created)
+    .map(c => ({ ...c, type: 'phrase', deck: 'phrases', category: CUSTOM.id, dirs: c.listenOnly ? ['listen'] : ['listen', 'recall'] }));
+  allNotes = [...custom, ...pack.notes];
+  noteById = new Map(allNotes.map(n => [n.id, n]));
+}
+refreshNotes();
 const LEARN_AHEAD = 20 * 60 * 1000; // show learning cards up to 20 min early when nothing else is left
 const app = document.getElementById('app');
 
@@ -28,7 +40,10 @@ document.addEventListener('click', e => {
 // ---------- scheduling queue ----------
 
 function liveCards() {
-  return Object.entries(state.cards).filter(([id]) => noteById.has(parseId(id)[0]));
+  return Object.entries(state.cards).filter(([id]) => {
+    const [nid, dir] = parseId(id);
+    return noteById.get(nid)?.dirs.includes(dir);
+  });
 }
 
 function dueCards(now) {
@@ -40,7 +55,7 @@ function dueCards(now) {
 function newCandidates(limit) {
   const out = [];
   if (limit <= 0) return out;
-  for (const note of pack.notes) {
+  for (const note of allNotes) {
     if (note.deck !== 'phrases') continue;
     for (let i = 0; i < note.dirs.length; i++) {
       const id = cardId(note, note.dirs[i]);
@@ -77,7 +92,7 @@ function pickNext(session) {
 
 // ---------- card templates ----------
 
-const roman = s => state.settings.showRoman ? `<div class="roman">${esc(s)}</div>` : '';
+const roman = s => s && state.settings.showRoman ? `<div class="roman">${esc(s)}</div>` : '';
 const phraseBack = n => `
   <div class="ko big">${esc(n.ko)} ${sayBtn(n.ko)}</div>
   ${roman(n.roman)}
@@ -154,7 +169,8 @@ function home() {
     </section>
     <nav class="menu">
       <a class="btn" href="#/hangul">한글 字母課程 <span class="muted">${done}/${pack.lessons.length}</span></a>
-      <a class="btn" href="#/browse">旅遊會話本</a>
+      <a class="btn" href="#/custom">${CUSTOM.name} <span class="muted">${Object.keys(state.custom).length}</span></a>
+      <a class="btn" href="#/browse">會話本</a>
       <a class="btn" href="#/settings">設定</a>
     </nav>
     ${hint}`;
@@ -368,15 +384,81 @@ function lessonView(arg) {
   learn();
 }
 
+function customView() {
+  const list = allNotes.filter(n => n.category === CUSTOM.id).reverse();
+  app.innerHTML = `${bar(CUSTOM.name)}
+    <a class="btn primary" href="#/edit">＋ 新增卡片</a>
+    <p class="muted small">工作上或路上聽到的新詞，馬上加進來。自訂卡片會比內建卡片優先出現。</p>
+    ${list.length
+      ? `<ul class="phrases">${list.map(n => `<li><a href="#/edit/${encodeURIComponent(n.id)}">
+          <div class="ko">${esc(n.ko)}</div>${n.roman ? `<div class="roman">${esc(n.roman)}</div>` : ''}
+          <div class="meaning">${esc(n.zh)}</div></a></li>`).join('')}</ul>`
+      : '<p class="muted center">還沒有自訂卡片</p>'}`;
+}
+
+function editView(arg) {
+  const id = arg ? decodeURIComponent(arg) : null;
+  const c = id ? state.custom[id] : null;
+  if (id && !c) return customView();
+  app.innerHTML = `${bar(c ? '編輯卡片' : '新增卡片', '#/custom')}
+    <form class="panel form" id="f" autocomplete="off">
+      <label class="stack">韓文<input name="ko" lang="ko" required value="${esc(c?.ko)}"></label>
+      <button type="button" class="btn" id="test">🔊 聽聽看</button>
+      <label class="stack">中文意思<input name="zh" required value="${esc(c?.zh)}"></label>
+      <label class="stack">羅馬拼音（可留空）<input name="roman" value="${esc(c?.roman)}"></label>
+      <label class="stack">備註（可留空）<input name="note" value="${esc(c?.note)}"></label>
+      <label class="check"><input type="checkbox" name="listenOnly" ${c?.listenOnly ? 'checked' : ''}>只練聽懂（不練說出口）</label>
+      <button class="btn primary">${c ? '儲存' : '新增'}</button>
+      ${c ? '<button type="button" class="btn danger" id="del">刪除這張卡片</button>' : ''}
+      <p id="msg" class="ok center"></p>
+    </form>`;
+  const f = app.querySelector('#f');
+  const field = name => f.elements[name];
+  app.querySelector('#test').onclick = () => say(field('ko').value);
+  f.onsubmit = e => {
+    e.preventDefault();
+    const data = {
+      ko: field('ko').value.trim(), zh: field('zh').value.trim(), roman: field('roman').value.trim(),
+      note: field('note').value.trim(), listenOnly: field('listenOnly').checked,
+    };
+    if (!data.ko || !data.zh) return;
+    if (c) {
+      Object.assign(c, data);
+    } else {
+      const nid = `${pack.id}.c.${Date.now().toString(36)}`;
+      state.custom[nid] = { id: nid, created: Date.now(), ...data };
+    }
+    save();
+    refreshNotes();
+    if (c) {
+      location.hash = '#/custom';
+    } else {
+      // Stay on the form so several words can be added in a row.
+      f.reset();
+      app.querySelector('#msg').textContent = `已新增：${data.ko}`;
+      field('ko').focus();
+    }
+  };
+  app.querySelector('#del')?.addEventListener('click', () => {
+    if (!confirm(`刪除「${c.ko}」和它的學習紀錄？`)) return;
+    delete state.custom[id];
+    for (const cid of Object.keys(state.cards)) if (parseId(cid)[0] === id) delete state.cards[cid];
+    save();
+    refreshNotes();
+    location.hash = '#/custom';
+  });
+}
+
 function browseView() {
-  const phrases = pack.notes.filter(n => n.deck === 'phrases');
-  app.innerHTML = `${bar('旅遊會話本')}
+  const phrases = allNotes.filter(n => n.deck === 'phrases');
+  const categories = [CUSTOM, ...pack.categories];
+  app.innerHTML = `${bar('會話本')}
     <input class="search" type="search" id="q" placeholder="搜尋中文或韓文…">
     <div id="results"></div>`;
   const results = app.querySelector('#results');
   function render(q) {
     q = q.trim().toLowerCase();
-    results.innerHTML = pack.categories.map(cat => {
+    results.innerHTML = categories.map(cat => {
       const list = phrases.filter(n => n.category === cat.id && (!q || [n.ko, n.zh, n.roman].some(s => s.toLowerCase().includes(q))));
       if (!list.length) return '';
       return `<h3>${esc(cat.name)}</h3><ul class="phrases">${list.map(n => {
@@ -436,7 +518,7 @@ function settingsView() {
 
 // ---------- router ----------
 
-const routes = { '': home, review: reviewView, hangul: hangulView, lesson: lessonView, browse: browseView, settings: settingsView };
+const routes = { '': home, review: reviewView, hangul: hangulView, lesson: lessonView, browse: browseView, settings: settingsView, custom: customView, edit: editView };
 
 function route() {
   const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');

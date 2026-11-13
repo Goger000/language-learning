@@ -8,6 +8,7 @@ const DEFAULTS = {
   cards: {},   // cardId -> FSRS card state
   lessons: {}, // lessonId -> { done: 'YYYY-MM-DD' }
   daily: {},   // 'YYYY-MM-DD' -> { new, reviews }
+  custom: {},  // noteId -> { id, ko, zh, roman, note, listenOnly, created } user-made cards
 };
 
 function load() {
@@ -48,6 +49,7 @@ export function importData(text) {
   state.cards = d.cards;
   state.lessons = d.lessons || {};
   state.daily = d.daily || {};
+  state.custom = d.custom || {};
   state.settings = { ...DEFAULTS.settings, ...d.settings };
   save();
 }
