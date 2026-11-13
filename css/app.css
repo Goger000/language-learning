@@ -132,6 +132,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
 .opt.ko { font-size: 22px; }
 .opt:disabled { opacity: 1; }
 .options.cols3 { grid-template-columns: repeat(3, 1fr); }
+.intro .options { margin-top: 8px; }
+.intro .options .opt { min-height: 56px; }
+.intro #start { margin-top: 20px; }
 .options.cols3 .opt, .options.cols2 .opt { min-height: 72px; font-size: 26px; }
 .opt.correct { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
 .opt.wrong { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }

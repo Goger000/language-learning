@@ -39,9 +39,14 @@ function weightedGroup(groups) {
   return groups[groups.length - 1];
 }
 
-// Vary voice, speed and pitch so the ear learns the sound category, not one recording.
-function randomDelivery(lang) {
-  return { voice: pick(voicesFor(lang)) || null, rate: pick([0.75, 0.9, 1.05]), pitch: pick([0.85, 1, 1.15]) };
+// Struggling groups are played slowly at a steady pitch; once accuracy recovers,
+// vary voice, speed and pitch so the ear learns the sound category, not one recording.
+const isStruggling = id => recent(id).length >= MIN_SAMPLES && accuracy(id) < 0.6;
+
+function randomDelivery(lang, groupId) {
+  const voice = pick(voicesFor(lang)) || null;
+  if (isStruggling(groupId)) return { voice, rate: pick([0.6, 0.7]), pitch: 1 };
+  return { voice, rate: pick([0.75, 0.9, 1.05]), pitch: pick([0.85, 1, 1.15]) };
 }
 
 export function drillListView(pack) {
@@ -73,13 +78,14 @@ export function drillView(pack, arg) {
       target = pick(set);
     }
     prev = target;
-    const delivery = randomDelivery(pack.ttsLang);
+    const delivery = randomDelivery(pack.ttsLang, g.id);
     const options = shuffle(set);
+    const tags = [groups.length > 1 ? g.name : '', isStruggling(g.id) ? '慢速' : ''].filter(Boolean);
 
     app.innerHTML = `${bar(title, '#/drill')}
       <div class="progress"><div style="width:${count / ROUND * 100}%"></div></div>
       <section class="card">
-        <div class="prompt">聽到的是哪一個？${groups.length > 1 ? `（${esc(g.name)}）` : ''}</div>
+        <div class="prompt">聽到的是哪一個？${tags.length ? `（${esc(tags.join('・'))}）` : ''}</div>
         <div class="center"><button class="say" id="replay">🔊 再聽一次</button></div>
         <div class="options cols${options.length}">${options.map(o => `<button class="btn opt ko" data-opt="${esc(o)}">${esc(o)}</button>`).join('')}</div>
         <div id="feedback"></div>
@@ -116,8 +122,25 @@ export function drillView(pack, arg) {
         <button class="btn primary" id="again">再一輪</button>
         <a class="btn" href="#/drill">回列表</a>
       </section>`;
-    app.querySelector('#again').onclick = () => drillView(pack, arg);
+    app.querySelector('#again').onclick = next;
+    count = 0;
+    correct = 0;
   }
 
-  next();
+  // Familiarization: hear every set side by side before being tested on it.
+  function intro() {
+    const g = groups[0];
+    app.innerHTML = `${bar(title, '#/drill')}
+      <section class="card intro">
+        <div class="prompt">先點著聽，比較差別</div>
+        <p class="tip">${esc(g.tip)}</p>
+        ${g.sets.map(set => `<div class="options cols${set.length}">${set.map(s =>
+          `<button class="btn opt ko" data-say="${esc(s)}">${esc(s)}</button>`).join('')}</div>`).join('')}
+        <button class="btn primary big" id="start">開始測驗</button>
+      </section>`;
+    app.querySelector('#start').onclick = next;
+  }
+
+  if (groups.length === 1) intro();
+  else next();
 }
