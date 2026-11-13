@@ -21,6 +21,20 @@ for (const pack of Object.values(packs)) {
     }
   });
 
+  test(`${pack.id}: contrast sets are valid minimal-pair groups`, () => {
+    const groupIds = new Set();
+    for (const g of pack.contrasts || []) {
+      assert.ok(!groupIds.has(g.id), `duplicate contrast group ${g.id}`);
+      groupIds.add(g.id);
+      assert.ok(g.name && g.tip && g.sets.length, g.id);
+      for (const set of g.sets) {
+        assert.ok(set.length >= 2 && set.length <= 3, `${g.id}: set size ${set}`);
+        assert.equal(new Set(set).size, set.length, `${g.id}: repeated item in ${set}`);
+        for (const s of set) assert.ok(/^[가-힯]+$/.test(s), `${g.id}: not Hangul syllables: ${s}`);
+      }
+    }
+  });
+
   test(`${pack.id}: fields are filled in`, () => {
     const cats = new Set(pack.categories.map(c => c.id));
     for (const n of pack.notes) {

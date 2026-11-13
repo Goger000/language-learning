@@ -1,11 +1,11 @@
 // Offline support: serve from cache immediately, refresh the cache in the background.
 // Bump CACHE when the file list changes.
-const CACHE = 'll-v5';
+const CACHE = 'll-v6';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './icon.svg', './css/app.css',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png',
-  './js/app.js', './js/fsrs.js', './js/store.js', './js/tts.js',
-  './lang/index.js', './lang/ko/index.js', './lang/ko/hangul.js', './lang/ko/phrases.js',
+  './js/app.js', './js/fsrs.js', './js/store.js', './js/tts.js', './js/ui.js', './js/drill.js',
+  './lang/index.js', './lang/ko/index.js', './lang/ko/hangul.js', './lang/ko/phrases.js', './lang/ko/contrasts.js',
 ];
 
 self.addEventListener('install', e => {

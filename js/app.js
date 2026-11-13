@@ -1,6 +1,8 @@
 import { Rating, newCard, schedule, introduce, formatInterval, DAY } from './fsrs.js';
 import { state, save, today, todayStats, exportData, importData, resetAll } from './store.js';
 import { speak, hasVoice } from './tts.js';
+import { app, esc, shuffle, bar } from './ui.js';
+import { drillListView, drillView } from './drill.js';
 import { packs } from '../lang/index.js';
 
 const pack = packs.ko;
@@ -18,19 +20,15 @@ function refreshNotes() {
 }
 refreshNotes();
 const LEARN_AHEAD = 20 * 60 * 1000; // show learning cards up to 20 min early when nothing else is left
-const app = document.getElementById('app');
 
 // ---------- helpers ----------
 
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const cardId = (note, dir) => `${note.id}#${dir}`;
 const parseId = id => { const i = id.lastIndexOf('#'); return [id.slice(0, i), id.slice(i + 1)]; };
 const isLearning = c => c.state === 'learning' || c.state === 'relearning';
-const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const say = text => speak(text, { lang: pack.ttsLang, rate: state.settings.ttsRate });
 const sayBtn = (text, label = '🔊') => `<button class="say" data-say="${esc(text)}" aria-label="播放">${esc(label)}</button>`;
-const bar = (title, back = '#/') => `<header class="bar"><a href="${back}" class="nav-back">‹</a><h2>${esc(title)}</h2><span></span></header>`;
 
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-say]');
@@ -169,6 +167,7 @@ function home() {
     </section>
     <nav class="menu">
       <a class="btn" href="#/hangul">한글 字母課程 <span class="muted">${done}/${pack.lessons.length}</span></a>
+      <a class="btn" href="#/drill">辨音訓練 <span class="muted">今日 ${stats.drill || 0} 題</span></a>
       <a class="btn" href="#/custom">${CUSTOM.name} <span class="muted">${Object.keys(state.custom).length}</span></a>
       <a class="btn" href="#/browse">會話本</a>
       <a class="btn" href="#/settings">設定</a>
@@ -518,7 +517,8 @@ function settingsView() {
 
 // ---------- router ----------
 
-const routes = { '': home, review: reviewView, hangul: hangulView, lesson: lessonView, browse: browseView, settings: settingsView, custom: customView, edit: editView };
+const routes = { '': home, review: reviewView, hangul: hangulView, lesson: lessonView, browse: browseView, settings: settingsView, custom: customView, edit: editView,
+  drill: arg => (arg ? drillView(pack, arg) : drillListView(pack)) };
 
 function route() {
   const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');

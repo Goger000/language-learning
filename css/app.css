@@ -131,6 +131,8 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
 .options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
 .opt.ko { font-size: 22px; }
 .opt:disabled { opacity: 1; }
+.options.cols3 { grid-template-columns: repeat(3, 1fr); }
+.options.cols3 .opt, .options.cols2 .opt { min-height: 72px; font-size: 26px; }
 .opt.correct { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
 .opt.wrong { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
 #feedback { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }

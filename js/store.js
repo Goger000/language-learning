@@ -9,6 +9,7 @@ const DEFAULTS = {
   lessons: {}, // lessonId -> { done: 'YYYY-MM-DD' }
   daily: {},   // 'YYYY-MM-DD' -> { new, reviews }
   custom: {},  // noteId -> { id, ko, zh, roman, note, listenOnly, created } user-made cards
+  drill: {},   // contrast group id -> { n, ok, recent: [1|0, ...] } listening-drill stats
 };
 
 function load() {
@@ -50,6 +51,7 @@ export function importData(text) {
   state.lessons = d.lessons || {};
   state.daily = d.daily || {};
   state.custom = d.custom || {};
+  state.drill = d.drill || {};
   state.settings = { ...DEFAULTS.settings, ...d.settings };
   save();
 }
